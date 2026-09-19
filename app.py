@@ -7,7 +7,7 @@ import os
 # PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="Amazon Bestsellers Analytics",
+    page_title="Amazon Best-Selling Books Analyzer",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -18,14 +18,19 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
     <style>
+    /* Clean main container spacing */
     .main .block-container {
         padding-top: 2rem;
         padding-bottom: 3rem;
     }
+    
+    /* Card metric text sizing */
     div[data-testid="stMetricValue"] {
         font-size: 1.8rem;
         font-weight: 700;
     }
+    
+    /* Custom footer design */
     .footer {
         position: relative;
         left: 0;
@@ -42,7 +47,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SUB-GENRE KEYWORD MAPPING
+# SUB-GENRE KEYWORD MAPPING ENGINE
 # ==========================================
 SUBGENRE_KEYWORDS = {
     "Self-Help & Mindset": ["habit", "subtle art", "mindset", "power", "secret", "think and grow", "attitude", "magic of thinking"],
@@ -64,17 +69,19 @@ def detect_subgenre(title):
     return "General / Other"
 
 # ==========================================
-# LOAD DATASET (ROBUST PATH + CACHED)
+# LOAD DATASET (ROBUST FILE PATH & CACHED)
 # ==========================================
 @st.cache_data
 def load_data():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     
-    # Checks if file is in main directory or data/ folder
+    # Auto-checks root folder or data/ folder
     if os.path.exists(os.path.join(BASE_DIR, "amazon_books.csv")):
         file_path = os.path.join(BASE_DIR, "amazon_books.csv")
-    else:
+    elif os.path.exists(os.path.join(BASE_DIR, "data", "amazon_books.csv")):
         file_path = os.path.join(BASE_DIR, "data", "amazon_books.csv")
+    else:
+        file_path = "amazon_books.csv"
         
     df = pd.read_csv(file_path)
     df["Sub-Genre"] = df["Name"].apply(detect_subgenre)
@@ -83,12 +90,13 @@ def load_data():
 df = load_data()
 
 # ==========================================
-# SIDEBAR FILTERS
+# SIDEBAR FILTERS (STAGE 12)
 # ==========================================
 st.sidebar.title("📚 Amazon Analytics")
 st.sidebar.markdown("---")
 st.sidebar.header("🔍 Filter Options")
 
+# 1. Main Genre Multiselect Filter
 genres_available = df["Genre"].unique().tolist()
 selected_genre = st.sidebar.multiselect(
     "Select Main Genre(s):",
@@ -96,6 +104,7 @@ selected_genre = st.sidebar.multiselect(
     default=genres_available
 )
 
+# 2. Year Range Slider
 min_year, max_year = int(df["Year"].min()), int(df["Year"].max())
 selected_years = st.sidebar.slider(
     "Select Year Range:",
@@ -104,6 +113,7 @@ selected_years = st.sidebar.slider(
     value=(min_year, max_year)
 )
 
+# 3. Price Range Slider
 min_price, max_price = float(df["Price"].min()), float(df["Price"].max())
 selected_price = st.sidebar.slider(
     "Select Price Range ($):",
@@ -112,12 +122,14 @@ selected_price = st.sidebar.slider(
     value=(min_price, max_price)
 )
 
+# APPLY FILTERS TO DATAFRAME
 filtered_df = df[
     (df["Genre"].isin(selected_genre)) &
     (df["Year"] >= selected_years[0]) & (df["Year"] <= selected_years[1]) &
     (df["Price"] >= selected_price[0]) & (df["Price"] <= selected_price[1])
 ]
 
+# Warning banner if query returns empty dataframe
 if filtered_df.empty:
     st.warning("⚠️ No books match your selected filter criteria. Please adjust your sidebar settings.")
     st.stop()
@@ -126,7 +138,7 @@ st.sidebar.markdown("---")
 st.sidebar.metric("Filtered Results", f"{len(filtered_df)} / {len(df)} Books")
 
 # ==========================================
-# HEADER & OVERVIEW
+# TITLE & ABOUT EXPANDER
 # ==========================================
 st.title("📚 Amazon Bestselling Books Dashboard")
 st.markdown("An interactive analytics dashboard exploring historical bestselling books data from Amazon (2009–2019).")
@@ -141,7 +153,7 @@ with st.expander("ℹ️ About this Dashboard & Dataset"):
 st.divider()
 
 # ==========================================
-# KPI METRIC CARDS
+# STAGE 7: DASHBOARD METRICS WITH DELTAS
 # ==========================================
 st.header("📊 Executive Overview")
 
@@ -168,7 +180,7 @@ with col4:
 st.divider()
 
 # ==========================================
-# PLOTLY CHARTS
+# STAGE 13: INTERACTIVE PLOTLY CHARTS
 # ==========================================
 st.header("📈 Visual Trends & Distribution")
 
@@ -228,7 +240,78 @@ st.plotly_chart(fig_authors, use_container_width=True)
 st.divider()
 
 # ==========================================
-# TABLES & EXPORT
+# STAGE 8: BOOK RANKINGS TABS
+# ==========================================
+st.header("🏆 Top Bestseller Rankings")
+
+tab1, tab2 = st.tabs(["🔥 Most Reviewed Books", "⭐ Top Rated Books"])
+
+with tab1:
+    top_reviewed = filtered_df.sort_values("Reviews", ascending=False).head(10)
+    st.dataframe(
+        top_reviewed[["Name", "Author", "Genre", "Sub-Genre", "Reviews", "User Rating", "Price", "Year"]],
+        hide_index=True,
+        use_container_width=True
+    )
+
+with tab2:
+    well_reviewed = filtered_df[filtered_df["Reviews"] >= 5000]
+    if well_reviewed.empty:
+        well_reviewed = filtered_df
+
+    top_rated = well_reviewed.sort_values(
+        by=["User Rating", "Reviews"], 
+        ascending=[False, False]
+    ).head(10)
+    
+    st.dataframe(
+        top_rated[["Name", "Author", "Genre", "Sub-Genre", "User Rating", "Reviews", "Price", "Year"]],
+        hide_index=True,
+        use_container_width=True
+    )
+
+st.divider()
+
+# ==========================================
+# STAGE 9, 10 & 11: AUTHOR, GENRE & YEARLY SUMMARY TABLES
+# ==========================================
+col_left, col_right = st.columns(2)
+
+with col_left:
+    st.header("✍️ Top Authors Breakdown")
+    top_authors_series = filtered_df["Author"].value_counts().head(10)
+    top_authors_df = top_authors_series.reset_index()
+    top_authors_df.columns = ["Author Name", "Bestselling Books Count"]
+    st.dataframe(top_authors_df, hide_index=True, use_container_width=True)
+
+with col_right:
+    st.header("📚 Genre Performance Summary")
+    genre_summary = filtered_df.groupby("Genre").agg(
+        Total_Books=("Name", "count"),
+        Avg_Rating=("User Rating", "mean"),
+        Avg_Price=("Price", "mean")
+    ).reset_index()
+    
+    genre_summary["Avg_Rating"] = genre_summary["Avg_Rating"].round(2)
+    genre_summary["Avg_Price"] = genre_summary["Avg_Price"].map("${:.2f}".format)
+    st.dataframe(genre_summary, hide_index=True, use_container_width=True)
+
+# Sub-Genre Breakdown Table
+st.subheader("🏷️ Detailed Sub-Genre Breakdown")
+subgenre_summary = filtered_df.groupby("Sub-Genre").agg(
+    Total_Books=("Name", "count"),
+    Avg_Rating=("User Rating", "mean"),
+    Avg_Price=("Price", "mean")
+).reset_index().sort_values("Total_Books", ascending=False)
+
+subgenre_summary["Avg_Rating"] = subgenre_summary["Avg_Rating"].round(2)
+subgenre_summary["Avg_Price"] = subgenre_summary["Avg_Price"].map("${:.2f}".format)
+st.dataframe(subgenre_summary, hide_index=True, use_container_width=True)
+
+st.divider()
+
+# ==========================================
+# EXPORT DATA & FULL DATASET EXPLORER
 # ==========================================
 st.header("📋 Filtered Dataset Explorer")
 
@@ -246,6 +329,9 @@ st.dataframe(
     use_container_width=True
 )
 
+# ==========================================
+# FOOTER
+# ==========================================
 st.markdown("""
     <div class="footer">
         <p>📚 <b>Amazon Best-Selling Books Analyzer</b> | Built with Python, Pandas & Streamlit</p>
