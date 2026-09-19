@@ -113,7 +113,7 @@ def detect_subgenre(title):
 @st.cache_data
 def load_data():
    df = pd.read_csv("amazon_books.csv")
-    df["Sub-Genre"] = df["Name"].apply(detect_subgenre)
+  df["Sub-Genre"] = df["Name"].apply(detect_subgenre)
     return df
 
 df = load_data()
